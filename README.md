@@ -44,7 +44,7 @@ dotnet build
 dotnet run
 ```
 
-#### Option 2: Build and Install Globally
+#### Option 2: Build and Install Globally As Dotnet Tool (recommended)
 
 ```bash
 # Clone and build
