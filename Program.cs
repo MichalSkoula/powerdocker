@@ -3,6 +3,19 @@ using PowerDocker.UI;
 
 Application.Init();
 
+// Set default terminal colors (white on black)
+Colors.TopLevel.Normal = new Terminal.Gui.Attribute(Color.White, Color.Black);
+Colors.TopLevel.Focus = new Terminal.Gui.Attribute(Color.Black, Color.Gray);
+Colors.TopLevel.HotNormal = new Terminal.Gui.Attribute(Color.BrightCyan, Color.Black);
+Colors.TopLevel.HotFocus = new Terminal.Gui.Attribute(Color.BrightCyan, Color.Gray);
+Colors.TopLevel.Disabled = new Terminal.Gui.Attribute(Color.DarkGray, Color.Black);
+
+Colors.Base.Normal = new Terminal.Gui.Attribute(Color.White, Color.Black);
+Colors.Base.Focus = new Terminal.Gui.Attribute(Color.Black, Color.Gray);
+Colors.Base.HotNormal = new Terminal.Gui.Attribute(Color.BrightCyan, Color.Black);
+Colors.Base.HotFocus = new Terminal.Gui.Attribute(Color.BrightCyan, Color.Gray);
+Colors.Base.Disabled = new Terminal.Gui.Attribute(Color.DarkGray, Color.Black);
+
 try
 {
     var mainWindow = new MainWindow();
