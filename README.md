@@ -2,6 +2,8 @@
 
 A simple, easy-to-use Docker container management tool built with .NET and Terminal.Gui, inspired by lazydocker but with better Docker Compose project grouping.
 
+https://github.com/user-attachments/assets/b0f8bb18-f106-483e-9765-9d3e417015eb
+
 ## Elevator Pitch
 
 * Docker Desktop is a slow and awkward experience. 
