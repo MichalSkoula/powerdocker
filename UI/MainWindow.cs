@@ -1,29 +1,20 @@
-using Terminal.Gui;
+using Spectre.Console;
 using PowerDocker.Models;
 using PowerDocker.Services;
-using System.Timers;
 
 namespace PowerDocker.UI;
 
-public class MainWindow : View
+public class MainWindow
 {
     private readonly DockerService _dockerService;
-    private readonly ListView _listView;
-    private readonly Label _statusLabel;
-    private readonly Button _startButton;
-    private readonly Button _stopButton;
-    private readonly Button _exitButton;
-    private readonly System.Timers.Timer _autoRefreshTimer;
-    private readonly string _defaultStatusText = "Ready (auto-refresh: 5s)";
-
     private List<ComposeProject> _projects = new();
-    private List<ListItem> _listItems = new();
+    private List<MenuItem> _menuItems = new();
+    private int _selectedIndex = 0;
+    private bool _running = true;
+    private CancellationTokenSource _cancellationTokenSource = new();
     
     public MainWindow()
     {
-        Width = Dim.Fill();
-        Height = Dim.Fill();
-        
         try
         {
             _dockerService = new DockerService();
@@ -32,382 +23,347 @@ public class MainWindow : View
         {
             throw new InvalidOperationException("Failed to initialize Docker service. Make sure Docker is running and accessible.", ex);
         }
-        
-        _listView = new ListView()
-        {
-            X = 0,
-            Y = 1,
-            Width = Dim.Fill(),
-            Height = Dim.Fill() - 3
-        };
-        
-        _statusLabel = new Label()
-        {
-            X = 0,
-            Y = Pos.Bottom(_listView),
-            Width = Dim.Fill(),
-            Height = 1,
-            Text = this._defaultStatusText
-        };
-        
-        _startButton = new Button("Restart")
-        {
-            X = 0,
-            Y = Pos.Bottom(_statusLabel)
-        };
-        
-        _stopButton = new Button("Stop")
-        {
-            X = Pos.Right(_startButton) + 1,
-            Y = Pos.Bottom(_statusLabel)
-        };
-        
-        _exitButton = new Button("Exit")
-        {
-            X = Pos.Right(_stopButton) + 1,
-            Y = Pos.Bottom(_statusLabel)
-        };
-        
-        Add(_listView, _statusLabel, _startButton, _stopButton, _exitButton);
-        
-        _startButton.Clicked += OnStartClicked;
-        _stopButton.Clicked += OnStopClicked;
-        _exitButton.Clicked += OnExitClicked;
-        
-        _listView.SelectedItemChanged += OnSelectionChanged;
-        _listView.KeyPress += OnKeyPress;
-        
-        CanFocus = true;
-        
-        _autoRefreshTimer = new System.Timers.Timer(5000);
-        _autoRefreshTimer.Elapsed += async (sender, e) => await AutoRefreshAsync();
-        _autoRefreshTimer.Start();
-        
-        _ = RefreshDataAsync();
     }
     
-    
-    private async void OnStartClicked()
+    public async Task RunAsync()
     {
-        var selected = GetSelectedItem();
-        if (selected == null) return;
+        // Start auto-refresh task
+        var autoRefreshTask = AutoRefreshAsync();
         
-        var currentSelection = _listView.SelectedItem;
-        bool success;
-        
-        if (selected is DockerContainer container)
-        {
-            if (container.IsRunning)
-            {
-                _statusLabel.Text = "Restarting container...";
-                Application.Refresh();
-                success = await _dockerService.RestartContainerAsync(container.Id);
-                _statusLabel.Text = success ? "Container restarted successfully" : "Failed to restart container";
-            }
-            else
-            {
-                _statusLabel.Text = "Starting container...";
-                Application.Refresh();
-                success = await _dockerService.StartContainerAsync(container.Id);
-                _statusLabel.Text = success ? "Container started successfully" : "Failed to start container";
-            }
-        }
-        else if (selected is ComposeProject project)
-        {
-            if (project.RunningCount > 0)
-            {
-                _statusLabel.Text = "Restarting project...";
-                Application.Refresh();
-                success = await _dockerService.RestartComposeProjectAsync(project);
-                _statusLabel.Text = success ? "Project restarted successfully" : "Failed to restart project";
-            }
-            else
-            {
-                _statusLabel.Text = "Starting project...";
-                Application.Refresh();
-                success = await _dockerService.StartComposeProjectAsync(project);
-                _statusLabel.Text = success ? "Project started successfully" : "Failed to start project";
-            }
-        }
-        else
-        {
-            return;
-        }
-        
+        // Initial data load
         await RefreshDataAsync();
         
-        // Restore cursor position
-        if (currentSelection >= 0 && currentSelection < _listItems.Count)
+        // Main UI loop
+        while (_running)
         {
-            _listView.SelectedItem = currentSelection;
+            RenderUI();
+            await HandleInputAsync();
+        }
+        
+        // Cleanup
+        _cancellationTokenSource.Cancel();
+        try
+        {
+            await autoRefreshTask;
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when cancelling
         }
     }
     
-    private async void OnStopClicked()
+    private void RenderUI()
     {
-        var selected = GetSelectedItem();
-        if (selected == null) return;
+        AnsiConsole.Clear();
         
-        var currentSelection = _listView.SelectedItem;
-        _statusLabel.Text = "Stopping...";
-        Application.Refresh();
+        // Render header
+        var rule = new Rule("[bold cyan]PowerDocker[/]");
+        rule.Style = Style.Parse("cyan");
+        AnsiConsole.Write(rule);
+        AnsiConsole.WriteLine();
         
-        bool success;
-        if (selected is DockerContainer container)
-        {
-            success = await _dockerService.StopContainerAsync(container.Id);
-        }
-        else if (selected is ComposeProject project)
-        {
-            success = await _dockerService.StopComposeProjectAsync(project);
-        }
-        else
-        {
-            return;
-        }
+        // Build menu items
+        BuildMenuItems();
         
-        _statusLabel.Text = success ? "Stopped successfully" : "Failed to stop";
-        await RefreshDataAsync();
+        // Render container list
+        var table = new Table();
+        table.Border = TableBorder.Rounded;
+        table.BorderStyle = Style.Parse("grey");
+        table.AddColumn(new TableColumn("[bold]Status[/]").Centered());
+        table.AddColumn(new TableColumn("[bold]Name[/]"));
+        table.AddColumn(new TableColumn("[bold]State[/]"));
         
-        // Restore cursor position
-        if (currentSelection >= 0 && currentSelection < _listItems.Count)
+        for (int i = 0; i < _menuItems.Count; i++)
         {
-            _listView.SelectedItem = currentSelection;
-        }
-    }
-    
-    private void OnExitClicked()
-    {
-        Application.RequestStop();
-    }
-    
-    private void OnSelectionChanged(ListViewItemEventArgs args)
-    {
-        var selected = GetSelectedItem();
-        
-        if (selected is DockerContainer container)
-        {
-            _statusLabel.Text = $"Container: {container.Name} [{container.State}]";
-        }
-        else if (selected is ComposeProject project)
-        {
-            _statusLabel.Text = $"Project: {project.Name} [{project.RunningCount}/{project.TotalCount} running]";
-        }
-        else
-        {
-            _statusLabel.Text = this._defaultStatusText;
-        }
-    }
-    
-    private void OnKeyPress(KeyEventEventArgs keyEvent)
-    {
-        switch ((char)keyEvent.KeyEvent.KeyValue)
-        {
-            case 'r':
-                if (GetSelectedItem() is DockerContainer or ComposeProject)
-                {
-                    OnStartClicked();
-                    keyEvent.Handled = true;
-                }
-                break;
-                
-            case 's':
-                if (GetSelectedItem() is DockerContainer or ComposeProject)
-                {
-                    OnStopClicked();
-                    keyEvent.Handled = true;
-                }
-                break;
-                
-            case 'e':
-                Application.RequestStop();
-                keyEvent.Handled = true;
-                break;
-        }
-    }
-    
-    private object? GetSelectedItem()
-    {
-        if (_listView.SelectedItem < 0 || _listView.SelectedItem >= _listItems.Count)
-            return null;
+            var item = _menuItems[i];
+            var isSelected = i == _selectedIndex;
             
-        return _listItems[_listView.SelectedItem].Data;
+            if (item.IsProject)
+            {
+                var project = (ComposeProject)item.Data;
+                var arrow = isSelected ? "[yellow]→[/]" : " ";
+                var projectName = isSelected ? $"[yellow bold]{project.Name.ToUpper()}[/]" : $"[bold]{project.Name.ToUpper()}[/]";
+                var status = $"{project.RunningCount}/{project.TotalCount} running";
+                
+                table.AddRow(arrow, projectName, $"[dim]{status}[/]");
+            }
+            else
+            {
+                var container = (DockerContainer)item.Data;
+                var arrow = isSelected ? "[yellow]→[/]" : " ";
+                var statusIcon = GetContainerStatusIcon(container);
+                var containerName = isSelected ? $"[yellow]  {container.Name}[/]" : $"[dim]  {container.Name}[/]";
+                var state = GetColoredState(container.State);
+                
+                table.AddRow($"{arrow} {statusIcon}", containerName, state);
+            }
+        }
+        
+        AnsiConsole.Write(table);
+        AnsiConsole.WriteLine();
+        
+        // Render status/help
+        var panel = new Panel(new Markup(
+            "[dim]Controls:[/] " +
+            "[cyan]↑/↓[/] Navigate  " +
+            "[cyan]r[/] Restart  " +
+            "[cyan]s[/] Stop  " +
+            "[cyan]e[/] Exit  " +
+            "[dim]│ Auto-refresh: 5s[/]"
+        ));
+        panel.Border = BoxBorder.Rounded;
+        panel.BorderStyle = Style.Parse("grey");
+        panel.Header = new PanelHeader(GetStatusText());
+        AnsiConsole.Write(panel);
+    }
+    
+    private string GetStatusText()
+    {
+        if (_menuItems.Count == 0)
+            return "[dim]No containers found[/]";
+            
+        var selectedItem = GetSelectedItem();
+        if (selectedItem is DockerContainer container)
+        {
+            return $"[cyan]Container:[/] {container.Name} [{GetColoredState(container.State)}]";
+        }
+        else if (selectedItem is ComposeProject project)
+        {
+            return $"[cyan]Project:[/] {project.Name} [{project.RunningCount}/{project.TotalCount} running]";
+        }
+        
+        return $"[cyan]Ready[/] - {_projects.Sum(p => p.TotalCount)} containers in {_projects.Count} projects";
+    }
+    
+    private async Task HandleInputAsync()
+    {
+        if (!Console.KeyAvailable)
+        {
+            await Task.Delay(50);
+            return;
+        }
+        
+        var key = Console.ReadKey(true);
+        
+        switch (key.Key)
+        {
+            case ConsoleKey.UpArrow:
+                _selectedIndex = Math.Max(0, _selectedIndex - 1);
+                break;
+                
+            case ConsoleKey.DownArrow:
+                _selectedIndex = Math.Min(_menuItems.Count - 1, _selectedIndex + 1);
+                break;
+                
+            case ConsoleKey.R:
+                await HandleRestartAsync();
+                break;
+                
+            case ConsoleKey.S:
+                await HandleStopAsync();
+                break;
+                
+            case ConsoleKey.E:
+            case ConsoleKey.Escape:
+                _running = false;
+                break;
+        }
+    }
+    
+    private async Task HandleRestartAsync()
+    {
+        var selected = GetSelectedItem();
+        if (selected == null) return;
+        
+        var currentSelection = _selectedIndex;
+        
+        if (selected is DockerContainer container)
+        {
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync(container.IsRunning ? "Restarting container..." : "Starting container...", async ctx =>
+                {
+                    bool success;
+                    if (container.IsRunning)
+                    {
+                        success = await _dockerService.RestartContainerAsync(container.Id);
+                        ctx.Status(success ? "[green]Container restarted successfully[/]" : "[red]Failed to restart container[/]");
+                    }
+                    else
+                    {
+                        success = await _dockerService.StartContainerAsync(container.Id);
+                        ctx.Status(success ? "[green]Container started successfully[/]" : "[red]Failed to start container[/]");
+                    }
+                    await Task.Delay(500);
+                });
+        }
+        else if (selected is ComposeProject project)
+        {
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync(project.RunningCount > 0 ? "Restarting project..." : "Starting project...", async ctx =>
+                {
+                    bool success;
+                    if (project.RunningCount > 0)
+                    {
+                        success = await _dockerService.RestartComposeProjectAsync(project);
+                        ctx.Status(success ? "[green]Project restarted successfully[/]" : "[red]Failed to restart project[/]");
+                    }
+                    else
+                    {
+                        success = await _dockerService.StartComposeProjectAsync(project);
+                        ctx.Status(success ? "[green]Project started successfully[/]" : "[red]Failed to start project[/]");
+                    }
+                    await Task.Delay(500);
+                });
+        }
+        
+        await RefreshDataAsync();
+        
+        // Restore cursor position
+        if (currentSelection >= 0 && currentSelection < _menuItems.Count)
+        {
+            _selectedIndex = currentSelection;
+        }
+    }
+    
+    private async Task HandleStopAsync()
+    {
+        var selected = GetSelectedItem();
+        if (selected == null) return;
+        
+        var currentSelection = _selectedIndex;
+        
+        if (selected is DockerContainer container)
+        {
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Stopping container...", async ctx =>
+                {
+                    var success = await _dockerService.StopContainerAsync(container.Id);
+                    ctx.Status(success ? "[green]Container stopped successfully[/]" : "[red]Failed to stop container[/]");
+                    await Task.Delay(500);
+                });
+        }
+        else if (selected is ComposeProject project)
+        {
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .StartAsync("Stopping project...", async ctx =>
+                {
+                    var success = await _dockerService.StopComposeProjectAsync(project);
+                    ctx.Status(success ? "[green]Project stopped successfully[/]" : "[red]Failed to stop project[/]");
+                    await Task.Delay(500);
+                });
+        }
+        
+        await RefreshDataAsync();
+        
+        // Restore cursor position
+        if (currentSelection >= 0 && currentSelection < _menuItems.Count)
+        {
+            _selectedIndex = currentSelection;
+        }
     }
     
     private async Task RefreshDataAsync()
     {
         try
         {
-            _statusLabel.Text = "Loading...";
-            Application.Refresh();
-            
             _projects = await _dockerService.GetComposeProjectsAsync();
-            BuildList();
-            
-            _statusLabel.Text = $"Loaded {_projects.Sum(p => p.TotalCount)} containers in {_projects.Count} projects";
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _statusLabel.Text = $"Error: {ex.Message}";
+            _projects = new List<ComposeProject>();
         }
     }
     
     private async Task AutoRefreshAsync()
     {
-        try
+        while (!_cancellationTokenSource.Token.IsCancellationRequested)
         {
-            _projects = await _dockerService.GetComposeProjectsAsync();
-            Application.MainLoop.Invoke(() => 
+            try
             {
-                var currentSelection = _listView.SelectedItem;
-                BuildList();
-                
-                // Preserve cursor position if possible
-                if (currentSelection >= 0 && currentSelection < _listItems.Count)
-                {
-                    _listView.SelectedItem = currentSelection;
-                }
-                
-                _statusLabel.Text = $"Auto-refreshed: {_projects.Sum(p => p.TotalCount)} containers in {_projects.Count} projects";
-                Application.Refresh();
-            });
-        }
-        catch (Exception ex)
-        {
-            Application.MainLoop.Invoke(() => 
+                await Task.Delay(5000, _cancellationTokenSource.Token);
+                await RefreshDataAsync();
+            }
+            catch (OperationCanceledException)
             {
-                _statusLabel.Text = $"Auto-refresh error: {ex.Message}";
-                Application.Refresh();
-            });
+                break;
+            }
+            catch (Exception)
+            {
+                // Silently continue on refresh errors
+            }
         }
     }
     
-    private void BuildList()
+    private void BuildMenuItems()
     {
-        _listItems.Clear();
+        _menuItems.Clear();
         
         foreach (var project in _projects)
         {
-            var projectDisplay = $"--> {project.Name.ToUpper()} ({project.RunningCount}/{project.TotalCount} running)";
-            _listItems.Add(new ListItem(projectDisplay, project));
+            _menuItems.Add(new MenuItem(true, project));
             
             foreach (var container in project.Containers)
             {
-                var statusIcon = GetContainerStatusIcon(container);
-                var containerDisplay = $"    {statusIcon} {container.Name} [{container.State}]";
-                _listItems.Add(new ListItem(containerDisplay, container));
+                _menuItems.Add(new MenuItem(false, container));
             }
         }
         
-        _listView.SetSource(_listItems.Select(i => i.Display).ToList());
+        // Ensure selected index is valid
+        if (_selectedIndex >= _menuItems.Count)
+        {
+            _selectedIndex = Math.Max(0, _menuItems.Count - 1);
+        }
+    }
+    
+    private object? GetSelectedItem()
+    {
+        if (_selectedIndex < 0 || _selectedIndex >= _menuItems.Count)
+            return null;
+            
+        return _menuItems[_selectedIndex].Data;
     }
     
     private string GetContainerStatusIcon(DockerContainer container)
     {
         return container.State.ToLower() switch
         {
-            "running" => "●",
-            "paused" => "‖",
-            "restarting" => "↻",
-            "exited" => "○",
-            "dead" => "✗",
-            "created" => "◦",
-            _ => "?"
+            "running" => "[green]●[/]",
+            "paused" => "[yellow]‖[/]",
+            "restarting" => "[cyan]↻[/]",
+            "exited" => "[grey]○[/]",
+            "dead" => "[red]✗[/]",
+            "created" => "[dim]◦[/]",
+            _ => "[dim]?[/]"
         };
     }
     
-    public override bool ProcessKey(KeyEvent keyEvent)
+    private string GetColoredState(string state)
     {
-        switch (keyEvent.Key)
+        return state.ToLower() switch
         {
-            case Key.Enter:
-                _listView.SetFocus();
-                return true;
-                
-            case Key.Esc:
-                return base.ProcessKey(keyEvent);
-        }
-        
-        return base.ProcessKey(keyEvent);
-    }
-    
-    private async Task RemoveContainerAsync(DockerContainer container)
-    {
-        _statusLabel.Text = "Removing container...";
-        Application.Refresh();
-        
-        try
-        {
-            var success = await _dockerService.RemoveContainerAsync(container.Id);
-            _statusLabel.Text = success ? "Container removed successfully" : "Failed to remove container";
-            if (success)
-            {
-                await RefreshDataAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            _statusLabel.Text = $"Error removing container: {ex.Message}";
-        }
-    }
-    
-    private async Task RemoveProjectAsync(ComposeProject project)
-    {
-        _statusLabel.Text = "Removing project...";
-        Application.Refresh();
-        
-        try
-        {
-            var success = await _dockerService.StopComposeProjectAsync(project);
-            _statusLabel.Text = success ? "Project stopped successfully" : "Failed to stop project";
-            if (success)
-            {
-                await RefreshDataAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            _statusLabel.Text = $"Error stopping project: {ex.Message}";
-        }
-    }
-    
-    private async Task ViewLogsAsync()
-    {
-        var selected = GetSelectedItem();
-        if (selected is DockerContainer container)
-        {
-            _statusLabel.Text = $"Viewing logs for {container.Name} (feature not implemented yet)";
-        }
-        else if (selected is ComposeProject project)
-        {
-            _statusLabel.Text = $"Viewing logs for {project.Name} (feature not implemented yet)";
-        }
-        else
-        {
-            _statusLabel.Text = "No container or project selected";
-        }
-    }
-    
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing)
-        {
-            _autoRefreshTimer?.Stop();
-            _autoRefreshTimer?.Dispose();
-            _dockerService?.Dispose();
-        }
-        base.Dispose(disposing);
+            "running" => "[green]running[/]",
+            "paused" => "[yellow]paused[/]",
+            "restarting" => "[cyan]restarting[/]",
+            "exited" => "[grey]exited[/]",
+            "dead" => "[red]dead[/]",
+            "created" => "[dim]created[/]",
+            _ => $"[dim]{state}[/]"
+        };
     }
 }
 
-public class ListItem
+public class MenuItem
 {
-    public string Display { get; }
+    public bool IsProject { get; }
     public object Data { get; }
     
-    public ListItem(string display, object data)
+    public MenuItem(bool isProject, object data)
     {
-        Display = display;
+        IsProject = isProject;
         Data = data;
     }
 }
