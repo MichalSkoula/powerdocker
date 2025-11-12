@@ -33,10 +33,12 @@ public class MainWindow
         // Initial data load
         await RefreshDataAsync();
         
-        // Main UI loop
+        // Initial render
+        RenderUI();
+        
+        // Main UI loop - only render on input or change
         while (_running)
         {
-            RenderUI();
             await HandleInputAsync();
         }
         
@@ -139,7 +141,7 @@ public class MainWindow
     {
         if (!Console.KeyAvailable)
         {
-            await Task.Delay(50);
+            await Task.Delay(100); // Increased delay to reduce CPU usage
             return;
         }
         
@@ -149,10 +151,12 @@ public class MainWindow
         {
             case ConsoleKey.UpArrow:
                 _selectedIndex = Math.Max(0, _selectedIndex - 1);
+                RenderUI(); // Render after input
                 break;
                 
             case ConsoleKey.DownArrow:
                 _selectedIndex = Math.Min(_menuItems.Count - 1, _selectedIndex + 1);
+                RenderUI(); // Render after input
                 break;
                 
             case ConsoleKey.R:
@@ -225,6 +229,8 @@ public class MainWindow
         {
             _selectedIndex = currentSelection;
         }
+        
+        RenderUI(); // Render after operation completes
     }
     
     private async Task HandleStopAsync()
@@ -264,6 +270,8 @@ public class MainWindow
         {
             _selectedIndex = currentSelection;
         }
+        
+        RenderUI(); // Render after operation completes
     }
     
     private async Task RefreshDataAsync()
@@ -286,6 +294,7 @@ public class MainWindow
             {
                 await Task.Delay(5000, _cancellationTokenSource.Token);
                 await RefreshDataAsync();
+                RenderUI(); // Render after auto-refresh
             }
             catch (OperationCanceledException)
             {
