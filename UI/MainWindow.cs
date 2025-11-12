@@ -82,7 +82,7 @@ public class MainWindow
             {
                 var project = (ComposeProject)item.Data;
                 var arrow = isSelected ? "[yellow]→[/]" : " ";
-                var projectName = isSelected ? $"[yellow bold]{project.Name.ToUpper()}[/]" : $"[bold]{project.Name.ToUpper()}[/]";
+                var projectName = isSelected ? $"[yellow bold]{Markup.Escape(project.Name.ToUpper())}[/]" : $"[bold]{Markup.Escape(project.Name.ToUpper())}[/]";
                 var status = $"{project.RunningCount}/{project.TotalCount} running";
                 
                 table.AddRow(arrow, projectName, $"[dim]{status}[/]");
@@ -92,7 +92,7 @@ public class MainWindow
                 var container = (DockerContainer)item.Data;
                 var arrow = isSelected ? "[yellow]→[/]" : " ";
                 var statusIcon = GetContainerStatusIcon(container);
-                var containerName = isSelected ? $"[yellow]  {container.Name}[/]" : $"[dim]  {container.Name}[/]";
+                var containerName = isSelected ? $"[yellow]  {Markup.Escape(container.Name)}[/]" : $"[dim]  {Markup.Escape(container.Name)}[/]";
                 var state = GetColoredState(container.State);
                 
                 table.AddRow($"{arrow} {statusIcon}", containerName, state);
@@ -125,11 +125,11 @@ public class MainWindow
         var selectedItem = GetSelectedItem();
         if (selectedItem is DockerContainer container)
         {
-            return $"[cyan]Container:[/] {container.Name} [{GetColoredState(container.State)}]";
+            return $"[cyan]Container:[/] {Markup.Escape(container.Name)} {GetColoredState(container.State)}";
         }
         else if (selectedItem is ComposeProject project)
         {
-            return $"[cyan]Project:[/] {project.Name} [{project.RunningCount}/{project.TotalCount} running]";
+            return $"[cyan]Project:[/] {Markup.Escape(project.Name)} - {project.RunningCount}/{project.TotalCount} running";
         }
         
         return $"[cyan]Ready[/] - {_projects.Sum(p => p.TotalCount)} containers in {_projects.Count} projects";
