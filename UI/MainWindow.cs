@@ -33,6 +33,9 @@ public class MainWindow
         // Initial data load
         await RefreshDataAsync();
         
+        // Hide cursor for cleaner display
+        Console.CursorVisible = false;
+        
         // Initial render
         RenderUI();
         
@@ -41,6 +44,9 @@ public class MainWindow
         {
             await HandleInputAsync();
         }
+        
+        // Show cursor again
+        Console.CursorVisible = true;
         
         // Cleanup
         _cancellationTokenSource.Cancel();
@@ -56,16 +62,17 @@ public class MainWindow
     
     private void RenderUI()
     {
-        AnsiConsole.Clear();
+        // Move cursor to top instead of clearing to avoid flicker
+        Console.SetCursorPosition(0, 0);
+        
+        // Build menu items
+        BuildMenuItems();
         
         // Render header
         var rule = new Rule("[bold cyan]PowerDocker[/]");
         rule.Style = Style.Parse("cyan");
         AnsiConsole.Write(rule);
         AnsiConsole.WriteLine();
-        
-        // Build menu items
-        BuildMenuItems();
         
         // Render container list
         var table = new Table();
@@ -117,6 +124,14 @@ public class MainWindow
         panel.BorderStyle = Style.Parse("grey");
         panel.Header = new PanelHeader(GetStatusText());
         AnsiConsole.Write(panel);
+        
+        // Clear any remaining lines from previous render
+        var currentLine = Console.CursorTop;
+        var windowHeight = Console.WindowHeight;
+        for (int i = currentLine; i < windowHeight; i++)
+        {
+            Console.Write(new string(' ', Console.WindowWidth));
+        }
     }
     
     private string GetStatusText()
