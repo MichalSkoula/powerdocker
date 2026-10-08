@@ -9,6 +9,8 @@
     <ToolCommandName>powerdocker</ToolCommandName>
     <PackageId>PowerDocker</PackageId>
     <Version>1.0.0</Version>
+    <!-- Generated previews and their nested obj directories are not application sources. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
