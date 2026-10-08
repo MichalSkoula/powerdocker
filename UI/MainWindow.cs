@@ -42,33 +42,41 @@ public sealed class MainWindow : IDisposable
         try
         {
             AnsiConsole.AlternateScreen(() =>
-                AnsiConsole.Live(new Text("Loading…"))
-                    .AutoClear(true)
-                    .Overflow(VerticalOverflow.Crop)
-                    .Start(context =>
+            {
+                using var screen = new TerminalScreen(AnsiConsole.Console);
+                AnsiConsole.Cursor.Hide();
+                try
+                {
+                    var previousSize = (0, 0);
+                    while (!_quit)
                     {
-                        var previousSize = (0, 0);
-                        while (!_quit)
+                        // Only this loop mutates UI state. Docker requests run asynchronously.
+                        CompleteRequests();
+                        if (!_demo && _operation == null && _refresh == null && DateTime.UtcNow >= _nextRefresh)
+                            Refresh();
+
+                        while (Console.KeyAvailable && !_quit)
+                            HandleKey(Console.ReadKey(intercept: true));
+                        if (_quit) break;
+
+                        var size = (AnsiConsole.Profile.Width, AnsiConsole.Profile.Height);
+                        if (_dirty || size != previousSize)
                         {
-                            // Only this loop mutates UI state. Docker requests run asynchronously.
-                            CompleteRequests();
-                            if (!_demo && _operation == null && _refresh == null && DateTime.UtcNow >= _nextRefresh)
-                                Refresh();
-
-                            while (Console.KeyAvailable && !_quit)
-                                HandleKey(Console.ReadKey(intercept: true));
-
-                            var size = (AnsiConsole.Profile.Width, AnsiConsole.Profile.Height);
-                            if (_dirty || size != previousSize)
-                            {
-                                context.UpdateTarget(Dashboard.Render(_browser, size.Item1, size.Item2,
-                                    _message, _messageStyle, _operation != null, _demo));
-                                previousSize = size;
-                                _dirty = false;
-                            }
-                            Thread.Sleep(40);
+                            screen.Draw(Dashboard.Render(_browser, size.Item1, size.Item2,
+                                _message, _messageStyle, _operation != null, _demo), size.Item1, size.Item2);
+                            previousSize = size;
+                            _dirty = false;
                         }
-                    }));
+                        // Process queued keys immediately; only idle iterations wait briefly.
+                        if (!Console.KeyAvailable) Thread.Sleep(5);
+                    }
+                }
+                finally
+                {
+                    AnsiConsole.ResetDecoration();
+                    AnsiConsole.Cursor.Show();
+                }
+            });
         }
         finally
         {
@@ -78,15 +86,23 @@ public sealed class MainWindow : IDisposable
 
     private void HandleKey(ConsoleKeyInfo key)
     {
+        var previousSelection = _browser.Selection;
         switch (key.Key)
         {
             case ConsoleKey.UpArrow: case ConsoleKey.K: _browser.Move(-1); break;
             case ConsoleKey.DownArrow: case ConsoleKey.J: _browser.Move(1); break;
             case ConsoleKey.Home: _browser.Move(-_browser.Items.Count); break;
             case ConsoleKey.End: _browser.Move(_browser.Items.Count); break;
-            case ConsoleKey.PageUp: _browser.Move(-Math.Max(1, AnsiConsole.Profile.Height - 13)); break;
-            case ConsoleKey.PageDown: _browser.Move(Math.Max(1, AnsiConsole.Profile.Height - 13)); break;
-            case ConsoleKey.Enter: case ConsoleKey.Spacebar: _browser.ToggleProject(); break;
+            case ConsoleKey.PageUp: _browser.Move(-Math.Max(1, AnsiConsole.Profile.Height - 14)); break;
+            case ConsoleKey.PageDown: _browser.Move(Math.Max(1, AnsiConsole.Profile.Height - 14)); break;
+            case ConsoleKey.Enter:
+            case ConsoleKey.Spacebar:
+                if (_browser.Selected is { Container: null })
+                {
+                    _browser.ToggleProject();
+                    _dirty = true;
+                }
+                break;
             case ConsoleKey.F5:
                 if (!_demo && _operation == null && _refresh == null) Refresh();
                 break;
@@ -94,7 +110,7 @@ public sealed class MainWindow : IDisposable
             case ConsoleKey.S: BeginOperation(stop: true); break;
             case ConsoleKey.Q: case ConsoleKey.E: case ConsoleKey.Escape: _quit = true; break;
         }
-        _dirty = true;
+        _dirty |= previousSelection != _browser.Selection;
     }
 
     private void Refresh()

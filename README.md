@@ -14,6 +14,7 @@ A simple Docker container management tool built with .NET and [Spectre.Console](
 
 - **Simple Text-based UI**: Project tree, aligned state columns, running counts, and a selection detail panel. Wide terminals also show container images.
 - **Compose Project Grouping**: Automatically groups containers by their Docker Compose projects
+- **Native app**: No Electron, no web browser, no Node.js, no JavaScript.
 - **Keyboard Shortcuts**: Fast control with simple key commands (r=start/restart, s=stop, q/e=exit)
 - **Auto-refresh**: Updates every 5 seconds, preserving the selected container even when rows change order
 - **Collapsible Projects**: Fold or unfold a project with Enter or Space
@@ -33,13 +34,12 @@ A simple Docker container management tool built with .NET and [Spectre.Console](
 
 ### Install PowerDocker
 
-#### Option 1: Build and Install Globally As Dotnet Tool (recommended)
+#### Option 1: Install Globally As Dotnet Tool (recommended)
 
 ```bash
-# Clone and build
+# Clone
 git clone https://github.com/MichalSkoula/powerdocker.git
 cd powerdocker
-dotnet build -c Release
 
 # Install as global tool (optional)
 dotnet pack -c Release

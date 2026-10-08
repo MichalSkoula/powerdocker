@@ -40,7 +40,7 @@ public static class Dashboard
             var isProject = item.Container == null;
             var name = isProject
                 ? $"{(browser.IsCollapsed(item.Project) ? "▸" : "▾")} {item.Project.Name}"
-                : $"  {(item == browser.Items.LastOrDefault(i => i.Project == item.Project) ? "└─" : "├─")} {item.Container!.Name}";
+                : $"  {(ReferenceEquals(item.Container, item.Project.Containers.LastOrDefault()) ? "└─" : "├─")} {item.Container!.Name}";
             var state = isProject ? $"{item.Project.RunningCount}/{item.Project.TotalCount} running" : item.Container!.State;
             var stateColor = isProject
                 ? item.Project.AllRunning ? "green" : item.Project.AnyRunning ? "yellow" : "dim"
