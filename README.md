@@ -47,6 +47,9 @@ dotnet tool install --global --add-source ./bin/Release PowerDocker
 
 # Run from anywhere
 powerdocker
+
+# Update to latest version (in the future)
+dotnet tool update --global --add-source ./bin/Release PowerDocker
 ```
 
 #### Option 2: Clone and Build from Source
