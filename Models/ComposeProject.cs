@@ -9,4 +9,5 @@ public class ComposeProject
     public bool AnyRunning => Containers.Any(c => c.IsRunning);
     public int RunningCount => Containers.Count(c => c.IsRunning);
     public int TotalCount => Containers.Count;
+    public ContainerUsage? Usage => ContainerUsage.Sum(Containers);
 }

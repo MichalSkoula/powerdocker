@@ -6,8 +6,13 @@ namespace PowerDocker.Services;
 
 public class DockerService : IDisposable
 {
-    private readonly DockerClient _dockerClient;
+    private readonly IDockerClient _dockerClient;
     private readonly CancellationTokenSource _shutdown = new();
+
+    public DockerService(IDockerClient dockerClient)
+    {
+        _dockerClient = dockerClient ?? throw new ArgumentNullException(nameof(dockerClient));
+    }
 
     public DockerService()
     {
@@ -55,6 +60,44 @@ public class DockerService : IDisposable
         {
             return false;
         }
+    }
+
+    public async Task<IReadOnlyDictionary<string, ContainerUsage?>> GetUsageAsync(IEnumerable<string> containerIds)
+    {
+        var cancellationToken = _shutdown.Token;
+        using var concurrency = new SemaphoreSlim(8);
+        var tasks = containerIds.Distinct().Select(async id =>
+        {
+            await concurrency.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(3));
+                var capture = new StatsCapture();
+                await _dockerClient.Containers.GetContainerStatsAsync(id,
+                    new ContainerStatsParameters { Stream = false, OneShot = false }, capture, timeout.Token)
+                    .ConfigureAwait(false);
+                return (Id: id, Usage: capture.Value == null ? null : UsageCalculator.FromStats(capture.Value));
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                // A container may stop or disappear between the list and stats requests.
+                return (Id: id, Usage: (ContainerUsage?)null);
+            }
+            finally
+            {
+                concurrency.Release();
+            }
+        }).ToArray();
+        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+        return results.ToDictionary(result => result.Id, result => result.Usage);
+    }
+
+    private sealed class StatsCapture : IProgress<ContainerStatsResponse>
+    {
+        // Progress<T> would post callbacks after the stats task has completed.
+        public ContainerStatsResponse? Value { get; private set; }
+        public void Report(ContainerStatsResponse value) => Value = value;
     }
 
     public async Task<bool> StopContainerAsync(string containerId)

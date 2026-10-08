@@ -2,7 +2,7 @@
 
 A simple Docker container management tool built with .NET and [Spectre.Console](https://spectreconsole.net), with Docker Compose project grouping.
 
-![PowerDocker demo showing grouped projects, container states, and the selected container's details](docs/images/powerdocker-demo.png)
+![PowerDocker demo showing grouped projects, CPU and RAM usage, and the selected container's details](docs/images/powerdocker-demo.png)
 
 ## Elevator Pitch
 
@@ -14,6 +14,7 @@ A simple Docker container management tool built with .NET and [Spectre.Console](
 
 - **Simple Text-based UI**: Project tree, aligned state columns, running counts, and a selection detail panel. Wide terminals also show container images.
 - **Compose Project Grouping**: Automatically groups containers by their Docker Compose projects
+- **CPU & RAM**: Background resource monitoring for running containers, with totals for each project. CPU is a percentage and RAM uses KiB/MiB/GiB. Linux RAM excludes reclaimable file cache, matching `docker stats`.
 - **Native app**: No Electron, no web browser, no Node.js, no JavaScript.
 - **Keyboard Shortcuts**: Fast control with simple key commands (r=start/restart, s=stop, q/e=exit)
 - **Auto-refresh**: Updates every 5 seconds, preserving the selected container even when rows change order
@@ -115,4 +116,8 @@ dotnet build
 dotnet run --project tests/PowerDocker.Checks.csproj
 ```
 
-The checks cover selection preservation, collapsing and scrolling, empty hosts, small terminals, literal Docker metadata, and ANSI output that leaves the terminal background untouched.
+The checks cover selection preservation, collapsing and scrolling, resource calculations and project totals, empty hosts, small terminals, literal Docker metadata, and ANSI output that leaves the terminal background untouched.
+
+## License
+
+[MIT](LICENSE)

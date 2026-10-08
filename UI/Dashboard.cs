@@ -1,5 +1,7 @@
+using PowerDocker.Models;
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.Globalization;
 
 namespace PowerDocker.UI;
 
@@ -32,8 +34,14 @@ public static class Dashboard
         table.AddColumn(new TableColumn(" ").Width(1).Padding(0, 0));
         table.AddColumn(new TableColumn("[dim]PROJECT / CONTAINER[/]").NoWrap());
         table.AddColumn(new TableColumn("[dim]STATE[/]").Width(14).NoWrap());
-        var showImages = width >= 100;
-        if (showImages) table.AddColumn(new TableColumn("[dim]IMAGE[/]").Width(30).NoWrap());
+        var showUsage = width >= 72;
+        if (showUsage)
+        {
+            table.AddColumn(new TableColumn("[dim]CPU[/]").Width(8).Padding(1, 2).NoWrap().RightAligned());
+            table.AddColumn(new TableColumn("[dim]RAM[/]").Width(10).Padding(1, 3).NoWrap().RightAligned());
+        }
+        var showImages = width >= 110;
+        if (showImages) table.AddColumn(new TableColumn("[dim]IMAGE[/]").Width(26).NoWrap());
 
         foreach (var (item, selected) in visible)
         {
@@ -57,6 +65,13 @@ public static class Dashboard
                 Cell(name, selected ? "bold invert" : isProject ? "bold cyan" : "default"),
                 Cell(state, selected ? "invert" : stateColor)
             };
+            if (showUsage)
+            {
+                var usage = isProject ? item.Project.Usage : item.Container!.IsRunning ? item.Container.Usage : null;
+                var cpuColor = usage?.CpuPercent == null ? "dim" : usage.CpuPercent >= 100 ? "yellow" : "green";
+                cells.Add(Cell(FormatCpu(usage), selected ? "invert" : cpuColor));
+                cells.Add(Cell(FormatMemory(usage), selected ? "invert" : usage?.MemoryBytes == null ? "dim" : "cyan"));
+            }
             if (showImages) cells.Add(Cell(item.Container?.Image ?? "", selected ? "invert" : "dim"));
             table.AddRow(cells.ToArray());
         }
@@ -75,13 +90,14 @@ public static class Dashboard
         {
             detailTitle = "Container";
             detail = $"[bold]{Escape(container.Name)}[/]  [dim]·[/]  {Escape(container.Status)}\n"
-                + $"[dim]Image[/] {Escape(container.Image)}  [dim]· Service[/] {Escape(string.IsNullOrEmpty(container.ComposeService) ? "standalone" : container.ComposeService)}";
+                + $"[dim]CPU[/] {FormatCpu(container.IsRunning ? container.Usage : null)}  [dim]· RAM[/] {FormatMemory(container.IsRunning ? container.Usage : null)}"
+                + $"  [dim]· Image[/] {Escape(container.Image)}  [dim]· Service[/] {Escape(string.IsNullOrEmpty(container.ComposeService) ? "standalone" : container.ComposeService)}";
         }
         else if (selectedItem is { } projectItem)
         {
             detailTitle = projectItem.Project.Name == "Standalone" ? "Standalone group" : "Compose project";
             detail = $"[bold]{Escape(projectItem.Project.Name)}[/]  [dim]·[/]  {projectItem.Project.TotalCount} containers\n"
-                + "Actions apply to every container in this group.";
+                + $"[dim]CPU[/] {FormatCpu(projectItem.Project.Usage)}  [dim]· RAM[/] {FormatMemory(projectItem.Project.Usage)}  [dim]·[/] Actions apply to every container in this group.";
         }
         else
         {
@@ -107,6 +123,18 @@ public static class Dashboard
         .Overflow(Overflow.Ellipsis);
 
     private static string Escape(string value) => Markup.Escape(Clean(value));
+
+    public static string FormatCpu(ContainerUsage? usage) => usage?.CpuPercent is { } cpu
+        ? cpu.ToString("F1", CultureInfo.InvariantCulture) + "%" : "—";
+
+    public static string FormatMemory(ContainerUsage? usage)
+    {
+        if (usage?.MemoryBytes is not { } bytes) return "—";
+        if (bytes >= 1024UL * 1024 * 1024) return (bytes / (1024d * 1024 * 1024)).ToString("F1", CultureInfo.InvariantCulture) + " GiB";
+        if (bytes >= 1024UL * 1024) return (bytes / (1024d * 1024)).ToString("F0", CultureInfo.InvariantCulture) + " MiB";
+        if (bytes >= 1024) return (bytes / 1024d).ToString("F0", CultureInfo.InvariantCulture) + " KiB";
+        return bytes.ToString(CultureInfo.InvariantCulture) + " B";
+    }
 
     // Docker metadata and exceptions are untrusted terminal text, not ANSI or markup.
     private static string Clean(string value) => new(value.Where(c => !char.IsControl(c)).ToArray());

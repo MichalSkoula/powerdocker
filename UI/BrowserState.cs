@@ -21,6 +21,15 @@ public sealed class BrowserState
     {
         var selectedKey = Selected?.Key;
         var selectedProject = Selected?.Project.Name;
+        var previousUsage = Projects.SelectMany(p => p.Containers).Where(c => c.IsRunning)
+            .ToDictionary(c => c.Id, c => c.Usage);
+        foreach (var container in projects.SelectMany(p => p.Containers))
+        {
+            if (container.IsRunning && container.Usage == null && previousUsage.TryGetValue(container.Id, out var usage)
+                && usage != null && DateTime.UtcNow - usage.SampledAt < TimeSpan.FromSeconds(15))
+                container.Usage = usage;
+            if (!container.IsRunning) container.Usage = null;
+        }
         Projects = projects;
         _collapsed.IntersectWith(projects.Select(p => p.Name));
         Rebuild();
@@ -31,6 +40,12 @@ public sealed class BrowserState
     }
 
     public void Move(int delta) => Selection = Math.Clamp(Selection + delta, 0, Math.Max(0, Items.Count - 1));
+
+    public void ApplyUsage(IReadOnlyDictionary<string, ContainerUsage?> usage)
+    {
+        foreach (var container in Projects.SelectMany(p => p.Containers))
+            container.Usage = container.IsRunning && usage.TryGetValue(container.Id, out var value) ? value : null;
+    }
 
     public void ToggleProject()
     {

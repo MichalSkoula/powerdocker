@@ -8,7 +8,8 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>powerdocker</ToolCommandName>
     <PackageId>PowerDocker</PackageId>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <!-- Generated previews and their nested obj directories are not application sources. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);artifacts/**</DefaultItemExcludes>
   </PropertyGroup>

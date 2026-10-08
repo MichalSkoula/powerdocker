@@ -10,6 +10,7 @@ public sealed class MainWindow : IDisposable
     private readonly bool _demo;
     private readonly BrowserState _browser = new();
     private Task<List<ComposeProject>>? _refresh;
+    private Task<IReadOnlyDictionary<string, ContainerUsage?>>? _usageRefresh;
     private Task<bool>? _operation;
     private string _operationName = "";
     private string _message = "Connecting to Docker…";
@@ -126,6 +127,11 @@ public sealed class MainWindow : IDisposable
             try
             {
                 _browser.Update(_refresh.GetAwaiter().GetResult());
+                if (_usageRefresh == null)
+                {
+                    var ids = _browser.Projects.SelectMany(p => p.Containers).Where(c => c.IsRunning).Select(c => c.Id).ToArray();
+                    _usageRefresh = _docker!.GetUsageAsync(ids);
+                }
                 if (_message == "Connecting to Docker…" || _message.StartsWith("Docker unavailable:", StringComparison.Ordinal))
                     SetMessage("Ready · auto-refresh every 5s", "dim");
             }
@@ -135,6 +141,14 @@ public sealed class MainWindow : IDisposable
             }
             _refresh = null;
             _nextRefresh = DateTime.UtcNow.AddSeconds(5);
+            _dirty = true;
+        }
+
+        if (_usageRefresh is { IsCompleted: true })
+        {
+            try { _browser.ApplyUsage(_usageRefresh.GetAwaiter().GetResult()); }
+            catch { _browser.ApplyUsage(new Dictionary<string, ContainerUsage?>()); }
+            _usageRefresh = null;
             _dirty = true;
         }
 
@@ -188,5 +202,7 @@ public sealed class MainWindow : IDisposable
         // Observe a pending refresh's failure if the user quits before it finishes.
         if (_refresh != null)
             _ = _refresh.ContinueWith(task => { _ = task.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
+        if (_usageRefresh != null)
+            _ = _usageRefresh.ContinueWith(task => { _ = task.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
     }
 }
