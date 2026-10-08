@@ -1,43 +1,39 @@
-using Terminal.Gui;
 using PowerDocker.UI;
+using System.Text;
 
-Application.Init();
+Console.OutputEncoding = Encoding.UTF8;
 
-// Set default terminal colors (white on black)
-Colors.TopLevel.Normal = new Terminal.Gui.Attribute(Color.White, Color.Black);
-Colors.TopLevel.Focus = new Terminal.Gui.Attribute(Color.Black, Color.Gray);
-Colors.TopLevel.HotNormal = new Terminal.Gui.Attribute(Color.BrightCyan, Color.Black);
-Colors.TopLevel.HotFocus = new Terminal.Gui.Attribute(Color.BrightCyan, Color.Gray);
-Colors.TopLevel.Disabled = new Terminal.Gui.Attribute(Color.DarkGray, Color.Black);
+if (args.Contains("--help") || args.Contains("-h"))
+{
+    Console.WriteLine("PowerDocker — Docker containers, grouped by compose project\n");
+    Console.WriteLine("Usage: powerdocker [--demo]\n");
+    Console.WriteLine("↑/↓ or j/k  Select     Enter/Space  Collapse or expand project");
+    Console.WriteLine("r  Start/restart       s  Stop       F5  Refresh       q/e/Esc  Quit");
+    Console.WriteLine("--demo  Preview the interface without connecting to Docker.");
+    return;
+}
 
-Colors.Base.Normal = new Terminal.Gui.Attribute(Color.White, Color.Black);
-Colors.Base.Focus = new Terminal.Gui.Attribute(Color.Black, Color.Gray);
-Colors.Base.HotNormal = new Terminal.Gui.Attribute(Color.BrightCyan, Color.Black);
-Colors.Base.HotFocus = new Terminal.Gui.Attribute(Color.BrightCyan, Color.Gray);
-Colors.Base.Disabled = new Terminal.Gui.Attribute(Color.DarkGray, Color.Black);
+if (args.Any(arg => arg != "--demo"))
+{
+    Console.Error.WriteLine("Unknown option. Use --help for usage.");
+    Environment.ExitCode = 1;
+    return;
+}
+
+if (Console.IsInputRedirected || Console.IsOutputRedirected)
+{
+    Console.Error.WriteLine("PowerDocker needs an interactive terminal. Use --help for usage.");
+    Environment.ExitCode = 1;
+    return;
+}
 
 try
 {
-    var mainWindow = new MainWindow();
-    var top = new Toplevel();
-    top.Add(mainWindow);
-    Application.Run(top);
+    using var window = new MainWindow(args.Contains("--demo"));
+    window.Run();
 }
 catch (Exception ex)
 {
-    Application.Shutdown();
-    Console.WriteLine($"Error: {ex.Message}");
-    Console.WriteLine($"Exception type: {ex.GetType().Name}");
-    Console.WriteLine($"Stack trace: {ex.StackTrace}");
-    if (ex.InnerException != null)
-    {
-        Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
-        Console.WriteLine($"Inner exception type: {ex.InnerException.GetType().Name}");
-    }
-    Console.WriteLine("Make sure Docker is running and accessible.");
-    Environment.Exit(1);
-}
-finally
-{
-    Application.Shutdown();
+    Console.Error.WriteLine($"PowerDocker: {ex.Message}");
+    Environment.ExitCode = 1;
 }

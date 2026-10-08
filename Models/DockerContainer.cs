@@ -9,6 +9,6 @@ public class DockerContainer
     public string ComposeProject { get; set; } = string.Empty;
     public string ComposeService { get; set; } = string.Empty;
     public string Image { get; set; } = string.Empty;
-    
+
     public bool IsRunning => State == "running";
 }

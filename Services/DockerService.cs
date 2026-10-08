@@ -4,10 +4,11 @@ using PowerDocker.Models;
 
 namespace PowerDocker.Services;
 
-public class DockerService
+public class DockerService : IDisposable
 {
     private readonly DockerClient _dockerClient;
-    
+    private readonly CancellationTokenSource _shutdown = new();
+
     public DockerService()
     {
         try
@@ -30,24 +31,24 @@ public class DockerService
             }
         }
     }
-    
+
     public async Task<List<ComposeProject>> GetComposeProjectsAsync()
     {
         var containers = await _dockerClient.Containers.ListContainersAsync(new ContainersListParameters
         {
             All = true
-        });
-        
+        }, _shutdown.Token);
+
         var dockerContainers = containers.Select(MapToDockerContainer).ToList();
-        
+
         return GroupByComposeProject(dockerContainers);
     }
-    
+
     public async Task<bool> StartContainerAsync(string containerId)
     {
         try
         {
-            await _dockerClient.Containers.StartContainerAsync(containerId, new ContainerStartParameters());
+            await _dockerClient.Containers.StartContainerAsync(containerId, new ContainerStartParameters(), _shutdown.Token);
             return true;
         }
         catch
@@ -55,12 +56,12 @@ public class DockerService
             return false;
         }
     }
-    
+
     public async Task<bool> StopContainerAsync(string containerId)
     {
         try
         {
-            await _dockerClient.Containers.StopContainerAsync(containerId, new ContainerStopParameters());
+            await _dockerClient.Containers.StopContainerAsync(containerId, new ContainerStopParameters(), _shutdown.Token);
             return true;
         }
         catch
@@ -68,12 +69,12 @@ public class DockerService
             return false;
         }
     }
-    
+
     public async Task<bool> RestartContainerAsync(string containerId)
     {
         try
         {
-            await _dockerClient.Containers.RestartContainerAsync(containerId, new ContainerRestartParameters());
+            await _dockerClient.Containers.RestartContainerAsync(containerId, new ContainerRestartParameters(), _shutdown.Token);
             return true;
         }
         catch
@@ -81,7 +82,7 @@ public class DockerService
             return false;
         }
     }
-    
+
     public async Task<bool> RemoveContainerAsync(string containerId)
     {
         try
@@ -89,7 +90,7 @@ public class DockerService
             await _dockerClient.Containers.RemoveContainerAsync(containerId, new ContainerRemoveParameters
             {
                 Force = true
-            });
+            }, _shutdown.Token);
             return true;
         }
         catch
@@ -97,38 +98,38 @@ public class DockerService
             return false;
         }
     }
-    
+
     public async Task<bool> StartComposeProjectAsync(ComposeProject project)
     {
         var tasks = project.Containers.Select(c => StartContainerAsync(c.Id));
         var results = await Task.WhenAll(tasks);
         return results.All(r => r);
     }
-    
+
     public async Task<bool> StopComposeProjectAsync(ComposeProject project)
     {
         var tasks = project.Containers.Select(c => StopContainerAsync(c.Id));
         var results = await Task.WhenAll(tasks);
         return results.All(r => r);
     }
-    
+
     public async Task<bool> RestartComposeProjectAsync(ComposeProject project)
     {
         var tasks = project.Containers.Select(c => RestartContainerAsync(c.Id));
         var results = await Task.WhenAll(tasks);
         return results.All(r => r);
     }
-    
+
     private static DockerContainer MapToDockerContainer(ContainerListResponse container)
     {
         var composeProject = container.Labels?.TryGetValue("com.docker.compose.project", out var project) == true ? project : "";
         var composeService = container.Labels?.TryGetValue("com.docker.compose.service", out var service) == true ? service : "";
-        
+
         if (string.IsNullOrEmpty(composeProject))
         {
             composeProject = "Standalone";
         }
-        
+
         return new DockerContainer
         {
             Id = container.ID,
@@ -140,7 +141,7 @@ public class DockerService
             Image = container.Image
         };
     }
-    
+
     private static List<ComposeProject> GroupByComposeProject(List<DockerContainer> containers)
     {
         return containers
@@ -153,9 +154,11 @@ public class DockerService
             .OrderBy(p => p.Name)
             .ToList();
     }
-    
+
     public void Dispose()
     {
-        _dockerClient?.Dispose();
+        _shutdown.Cancel();
+        _dockerClient.Dispose();
+        _shutdown.Dispose();
     }
 }
