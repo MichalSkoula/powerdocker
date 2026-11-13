@@ -85,6 +85,68 @@ Check(colored.Contains("\u001b[7m") || sgr.Any(match => match.Groups[1].Value.Sp
     "Selection must use inverse terminal colors.");
 Check(Render(state, 30, 10).Contains("Resize terminal"), "Tiny terminals must display a usable fallback.");
 
+var portsApi = DispatchProxy.Create<IContainerOperations, StatsApiStub>();
+((StatsApiStub)(object)portsApi).Containers =
+[
+    new ContainerListResponse
+    {
+        ID = "db", Names = ["/app-db-1"], State = "running", Status = "Up 2 hours", Image = "mariadb:10.11",
+        Labels = new Dictionary<string, string> { ["com.docker.compose.project"] = "app" },
+        Ports =
+        [
+            new Port { IP = "0.0.0.0", PublicPort = 3308, PrivatePort = 3306, Type = "tcp" },
+            new Port { IP = "::", PublicPort = 3308, PrivatePort = 3306, Type = "tcp" },
+            new Port { PublicPort = 0, PrivatePort = 33060, Type = "tcp" }
+        ]
+    },
+    new ContainerListResponse
+    {
+        ID = "web", Names = ["/app-web-1"], State = "running", Status = "Up 2 hours", Image = "nginx:alpine",
+        Labels = new Dictionary<string, string> { ["com.docker.compose.project"] = "app" },
+        Ports =
+        [
+            new Port { PublicPort = 8083, PrivatePort = 80, Type = "tcp" },
+            new Port { PublicPort = 5353, PrivatePort = 53, Type = "udp" },
+            new Port { PublicPort = 5353, PrivatePort = 53, Type = "tcp" }
+        ]
+    },
+    new ContainerListResponse { ID = "stopped", Names = ["/stopped"], State = "exited", Status = "Exited (0)", Image = "redis:7" }
+];
+var portsDocker = DispatchProxy.Create<IDockerClient, DockerApiStub>();
+((DockerApiStub)(object)portsDocker).Containers = portsApi;
+using (var service = new DockerService(portsDocker))
+{
+    var projectsWithPorts = service.GetComposeProjectsAsync().GetAwaiter().GetResult();
+    var app = projectsWithPorts.Single(p => p.Name == "app");
+    var db = app.Containers.Single(c => c.Id == "db");
+    var web = app.Containers.Single(c => c.Id == "web");
+    Check(db.Ports.Count == 1 && Dashboard.FormatPorts(db.Ports) == "3308:3306",
+        "Published ports must use host:container and deduplicate IPv4/IPv6 bindings, excluding exposed-only ports.");
+    Check(Dashboard.FormatPorts(web.Ports) == "5353:53, 5353:53/udp, 8083:80",
+        "Multiple published ports must have stable ordering and retain different protocols.");
+    Check(Dashboard.FormatPorts(projectsWithPorts.Single(p => p.Name == "Standalone").Containers[0].Ports) == "—",
+        "A missing port list must show a dash without requiring container inspection.");
+    state.Update(projectsWithPorts);
+    state.Move(-state.Items.Count);
+    state.Move(1);
+    foreach (var width in new[] { 42, 72, 80, 89, 90, 100, 110, 139, 140, 180 })
+    {
+        var rendered = Render(state, width, 24);
+        var lines = rendered.Replace("\r", "").TrimEnd('\n').Split('\n');
+        Check(lines.Length <= 24 && lines.All(line => line.Length <= width),
+            $"Published port columns and details must fit a {width}-column terminal.");
+        Check(rendered.Contains("Ports") && rendered.Contains("3308:3306"),
+            "Selected container ports must be available in details even on narrow terminals.");
+        Check(rendered.Contains("PORTS") == (width >= 90), "The port column must appear when there is room.");
+        if (width >= 90)
+            Check(lines.Any(line => line.Contains("app-db-1") && line.Contains("3308:3306"))
+                && lines.Any(line => line.Contains("app-web-1") && line.Contains("5353:53")),
+                "Published port mappings must appear on their container rows.");
+        if (width >= 140) Check(rendered.Contains("IMAGE") && rendered.Contains("mariadb:10.11"),
+            "Wide terminals must retain the image column alongside published ports.");
+    }
+}
+
 ContainerStatsResponse Stats(ulong cpu, ulong previousCpu, ulong system, ulong previousSystem, uint processors = 4) => new()
 {
     CPUStats = new CPUStats { CPUUsage = new CPUUsage { TotalUsage = cpu }, SystemUsage = system, OnlineCPUs = processors },
@@ -303,6 +365,7 @@ public class DockerApiStub : DispatchProxy
 
 public class StatsApiStub : DispatchProxy
 {
+    public IList<ContainerListResponse> Containers { get; set; } = [];
     public Func<string, CancellationToken, Task<ContainerStatsResponse>> GetSample { get; set; } = null!;
     public int Active;
     public int MaxActive;
@@ -310,6 +373,11 @@ public class StatsApiStub : DispatchProxy
 
     protected override object Invoke(MethodInfo? method, object?[]? args)
     {
+        if (method!.Name == "ListContainersAsync")
+        {
+            if (((ContainersListParameters)args![0]!).All != true) throw new Exception("Container list must include stopped containers.");
+            return Task.FromResult(Containers);
+        }
         if (method!.Name != "GetContainerStatsAsync") throw new NotSupportedException(method.Name);
         var parameters = (ContainerStatsParameters)args![1]!;
         SnapshotRequests &= !parameters.Stream && parameters.OneShot == false;

@@ -40,7 +40,9 @@ public static class Dashboard
             table.AddColumn(new TableColumn("[dim]CPU[/]").Width(8).Padding(1, 2).NoWrap().RightAligned());
             table.AddColumn(new TableColumn("[dim]RAM[/]").Width(10).Padding(1, 3).NoWrap().RightAligned());
         }
-        var showImages = width >= 110;
+        var showPorts = width >= 90;
+        if (showPorts) table.AddColumn(new TableColumn("[dim]PORTS[/]").Width(22).NoWrap());
+        var showImages = width >= 140;
         if (showImages) table.AddColumn(new TableColumn("[dim]IMAGE[/]").Width(26).NoWrap());
 
         foreach (var (item, selected) in visible)
@@ -72,6 +74,8 @@ public static class Dashboard
                 cells.Add(Cell(FormatCpu(usage), selected ? "invert" : cpuColor));
                 cells.Add(Cell(FormatMemory(usage), selected ? "invert" : usage?.MemoryBytes == null ? "dim" : "cyan"));
             }
+            if (showPorts) cells.Add(Cell(isProject ? "" : FormatPorts(item.Container!.Ports),
+                selected ? "invert" : item.Container?.Ports.Count > 0 ? "cyan" : "dim"));
             if (showImages) cells.Add(Cell(item.Container?.Image ?? "", selected ? "invert" : "dim"));
             table.AddRow(cells.ToArray());
         }
@@ -90,7 +94,7 @@ public static class Dashboard
         {
             detailTitle = "Container";
             detail = $"[bold]{Escape(container.Name)}[/]  [dim]·[/]  {Escape(container.Status)}\n"
-                + $"[dim]CPU[/] {FormatCpu(container.IsRunning ? container.Usage : null)}  [dim]· RAM[/] {FormatMemory(container.IsRunning ? container.Usage : null)}"
+                + $"[dim]Ports[/] {Escape(FormatPorts(container.Ports))}  [dim]· CPU[/] {FormatCpu(container.IsRunning ? container.Usage : null)}  [dim]· RAM[/] {FormatMemory(container.IsRunning ? container.Usage : null)}"
                 + $"  [dim]· Image[/] {Escape(container.Image)}  [dim]· Service[/] {Escape(string.IsNullOrEmpty(container.ComposeService) ? "standalone" : container.ComposeService)}";
         }
         else if (selectedItem is { } projectItem)
@@ -126,6 +130,11 @@ public static class Dashboard
 
     public static string FormatCpu(ContainerUsage? usage) => usage?.CpuPercent is { } cpu
         ? cpu.ToString("F1", CultureInfo.InvariantCulture) + "%" : "—";
+
+    public static string FormatPorts(IReadOnlyList<PortMapping> ports) => ports.Count == 0 ? "—"
+        : string.Join(", ", ports.Select(port =>
+            port.HostPort.ToString(CultureInfo.InvariantCulture) + ":" + port.ContainerPort.ToString(CultureInfo.InvariantCulture)
+            + (port.Protocol == "tcp" ? "" : "/" + port.Protocol)));
 
     public static string FormatMemory(ContainerUsage? usage)
     {

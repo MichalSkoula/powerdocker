@@ -14,6 +14,7 @@ A simple Docker container management tool built with .NET and [Spectre.Console](
 
 - **Simple Text-based UI**: Project tree, aligned state columns, running counts, and a selection detail panel. Wide terminals also show container images.
 - **Compose Project Grouping**: Automatically groups containers by their Docker Compose projects
+- **Published Ports**: Shows host-to-container mappings such as `8083:80` in the PORTS column (terminals at least 90 columns wide) and in container details. UDP mappings include `/udp`; containers without published ports show a dash.
 - **CPU & RAM**: Background resource monitoring for running containers, with totals for each project. CPU is a percentage and RAM uses KiB/MiB/GiB. Linux RAM excludes reclaimable file cache, matching `docker stats`.
 - **Native app**: No Electron, no web browser, no Node.js, no JavaScript.
 - **Keyboard Shortcuts**: Fast control with simple key commands (r=start/restart, s=stop, q/e=exit)

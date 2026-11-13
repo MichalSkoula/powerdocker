@@ -181,7 +181,18 @@ public class DockerService : IDisposable
             State = container.State,
             ComposeProject = composeProject,
             ComposeService = composeService,
-            Image = container.Image
+            Image = container.Image,
+            // Exposed-only ports have no host binding. IPv4/IPv6 bindings can
+            // describe the same mapping, so show each port/protocol pair once.
+            Ports = (container.Ports ?? [])
+                .Where(port => port.PublicPort > 0)
+                .Select(port => new PortMapping(port.PublicPort, port.PrivatePort,
+                    string.IsNullOrEmpty(port.Type) ? "tcp" : port.Type.ToLowerInvariant()))
+                .Distinct()
+                .OrderBy(port => port.HostPort)
+                .ThenBy(port => port.ContainerPort)
+                .ThenBy(port => port.Protocol, StringComparer.Ordinal)
+                .ToArray()
         };
     }
 
