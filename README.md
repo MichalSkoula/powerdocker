@@ -52,7 +52,7 @@ powerdocker
 
 ```
 
-```
+```bash
 # Update to latest version (in the future)
 dotnet pack -c Release
 dotnet tool update --global --add-source ./bin/Release PowerDocker
