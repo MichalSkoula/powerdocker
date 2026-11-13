@@ -1,6 +1,6 @@
 # PowerDocker
 
-A simple Docker container management tool built with .NET and [Spectre.Console](https://spectreconsole.net), with Docker Compose project grouping.
+A simple Docker container management tool built with .NET 10 LTS and [Spectre.Console](https://spectreconsole.net), with Docker Compose project grouping.
 
 ![PowerDocker demo showing grouped projects, CPU and RAM usage, and the selected container's details](docs/images/powerdocker-demo.png)
 
@@ -27,7 +27,7 @@ A simple Docker container management tool built with .NET and [Spectre.Console](
 
 ### Prerequisites
 
-1. Install .NET 8.0 or later
+1. Install the [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) to build, pack, and install from source. The packaged tool requires the .NET 10 runtime. .NET 10 is an [LTS release supported until November 2028](https://dotnet.microsoft.com/en-us/platform/support/policy).
 2. Configure Docker permissions (Linux only):
    ```bash
    sudo usermod -aG docker $USER
@@ -54,6 +54,7 @@ powerdocker
 
 ```bash
 # Update to latest version (in the future)
+# Quit any running PowerDocker instance before updating.
 dotnet pack -c Release
 dotnet tool update --global --add-source ./bin/Release PowerDocker
 ```
